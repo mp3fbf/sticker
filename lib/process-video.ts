@@ -16,7 +16,7 @@
  */
 
 import { FFmpeg } from "@ffmpeg/ffmpeg"
-import { fetchFile } from "@ffmpeg/util"
+import { fetchFile, toBlobURL } from "@ffmpeg/util"
 import { STICKER_REQUIREMENTS, WEBP_ENCODING, PROCESSING } from "./constants"
 
 /**
@@ -126,11 +126,28 @@ export async function loadFFmpeg(
         })
       }
 
-      // Load FFmpeg WASM
-      await ffmpegInstance.load()
+      // Load FFmpeg with correct paths
+      // Using CDN URLs for core files
+      await ffmpegInstance.load({
+        // Using UMD format which is more compatible with browsers
+        coreURL: await toBlobURL(
+          "https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd/ffmpeg-core.js",
+          "text/javascript"
+        ),
+        wasmURL: await toBlobURL(
+          "https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd/ffmpeg-core.wasm",
+          "application/wasm"
+        ),
+        // Also load the worker
+        workerURL: await toBlobURL(
+          "https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd/ffmpeg-core.worker.js",
+          "text/javascript"
+        )
+      })
     } catch (error) {
       // Reset instance if loading fails
       ffmpegInstance = null
+      console.error("FFmpeg loading error:", error)
       throw error
     }
   })()
@@ -144,49 +161,35 @@ export async function loadFFmpeg(
  * Process a video file to convert it to a WhatsApp-compatible animated sticker
  *
  * @param file The video file to process
- * @param options Processing options
- * @returns Promise that resolves to the processed sticker
+ * @param progressCallback Optional callback for progress updates
+ * @returns Promise that resolves to the processed sticker as a Blob
  */
 export async function processVideo(
   file: File,
-  options: ProcessVideoOptions = {}
-): Promise<ProcessedSticker> {
-  const {
-    onProgress,
-    maxDurationSeconds = STICKER_REQUIREMENTS.MAX_DURATION_SECONDS,
-    dimensions = STICKER_REQUIREMENTS.DIMENSIONS,
-    quality = WEBP_ENCODING.QUALITY,
-    compressionLevel = WEBP_ENCODING.COMPRESSION_LEVEL
-  } = options
-
+  progressCallback?: (progress: number) => void
+): Promise<Blob> {
   try {
     // Load FFmpeg
-    const ffmpeg = await loadFFmpeg(onProgress)
+    const ffmpeg = await loadFFmpeg(progressCallback)
 
     // Prepare input file name - create a unique name to avoid conflicts
     const inputFileName = `input-${Date.now()}.${file.name.split(".").pop() || "mp4"}`
-    const outputFileName = PROCESSING.TEMP_FILES.OUTPUT
+    const outputFileName = "output.webp"
 
     // Write the input file to FFmpeg's virtual file system
     const inputData = await fetchFile(file)
     await ffmpeg.writeFile(inputFileName, inputData)
 
     // Prepare the FFmpeg command
-    // This command will:
-    // 1. Take the input file
-    // 2. Limit it to the maximum duration
-    // 3. Scale it to fit within the required dimensions while maintaining aspect ratio
-    // 4. Pad it to create a square output
-    // 5. Convert it to WebP format with specified quality settings
     const ffmpegArgs = [
       "-i",
       inputFileName, // Input file
       "-t",
-      maxDurationSeconds.toString(), // Limit duration
+      "3", // Limit duration to 3 seconds (WhatsApp limit)
 
-      // Scale and pad to square dimensions
+      // Scale and pad to square dimensions (512x512 for WhatsApp)
       "-vf",
-      `scale=${dimensions.width}:${dimensions.height}:force_original_aspect_ratio=decrease,pad=${dimensions.width}:${dimensions.height}:(ow-iw)/2:(oh-ih)/2,setsar=1`,
+      "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2,setsar=1",
 
       // WebP format settings
       "-c:v",
@@ -194,9 +197,9 @@ export async function processVideo(
       "-lossless",
       "0", // Use lossy compression
       "-compression_level",
-      compressionLevel.toString(),
+      "6",
       "-q:v",
-      quality.toString(), // Quality setting
+      "80", // Quality setting
       "-loop",
       "0", // Infinite loop
       "-preset",
@@ -214,21 +217,14 @@ export async function processVideo(
     const outputData = await ffmpeg.readFile(outputFileName)
 
     // Create a blob from the output data
-    const blob = new Blob([outputData], {
-      type: STICKER_REQUIREMENTS.OUTPUT_FORMAT
-    })
+    const blob = new Blob([outputData], { type: "image/webp" })
 
     // Clean up temporary files to free memory
     await ffmpeg.deleteFile(inputFileName)
     await ffmpeg.deleteFile(outputFileName)
 
-    // Return the processed sticker information
-    return {
-      blob,
-      dimensions,
-      duration: maxDurationSeconds,
-      size: blob.size
-    }
+    // Return the processed blob
+    return blob
   } catch (error) {
     console.error("Error processing video:", error)
     throw new Error(
