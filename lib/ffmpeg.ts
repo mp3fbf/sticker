@@ -1,216 +1,229 @@
 /**
  * @description
- * This file provides utilities for working with FFmpeg WebAssembly in the browser.
- * It handles initialization, loading, and video processing functionality.
- *
- * Key features:
- * - Lazy loading of FFmpeg WASM
- * - Singleton pattern to prevent multiple loads
- * - Video processing for WhatsApp sticker requirements
- * - Video metadata extraction
+ * General utility functions for the WhatsApp Sticker Maker application.
+ * Includes functions for:
+ * - CSS class name management (cn)
+ * - File validation and handling
+ * - File size formatting
+ * - URL object handling
+ * - Device and browser detection
  *
  * @dependencies
- * - @ffmpeg/ffmpeg: Core FFmpeg WebAssembly library
- * - @ffmpeg/util: Utilities for working with FFmpeg
+ * - clsx: For conditional class name handling
+ * - tailwind-merge: For merging Tailwind CSS classes
  */
 
-"use client"
-
-import { FFmpeg } from "@ffmpeg/ffmpeg"
-import { fetchFile } from "@ffmpeg/util"
-
-// Cache the FFmpeg instance to avoid loading multiple times
-let ffmpegInstance: FFmpeg | null = null
+import { type ClassValue, clsx } from "clsx"
+import { twMerge } from "tailwind-merge"
 
 /**
- * Loads and initializes the FFmpeg WebAssembly instance
- * @returns Promise resolving to FFmpeg instance
+ * Combines multiple class names with Tailwind CSS support
+ * @param inputs Class names to combine
+ * @returns Combined class string
  */
-export async function getFFmpeg(): Promise<FFmpeg> {
-  if (ffmpegInstance) {
-    return ffmpegInstance
-  }
-
-  // Create and load a new instance if one doesn't exist
-  ffmpegInstance = new FFmpeg()
-
-  try {
-    await ffmpegInstance.load()
-    return ffmpegInstance
-  } catch (error) {
-    ffmpegInstance = null
-    console.error("Failed to load FFmpeg:", error)
-    throw new Error(
-      "Failed to load video processing library. Please try again."
-    )
-  }
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
 }
 
 /**
- * Processes a video file to match WhatsApp sticker requirements
- *
- * WhatsApp sticker requirements:
- * - WebP format
- * - 512x512 pixels (square aspect ratio)
- * - Max 3 seconds duration
- * - No audio
- *
- * @param file The video file to process
- * @param onProgress Optional callback for progress updates (0-100)
- * @returns Promise resolving to a WebP blob that can be used as a WhatsApp sticker
+ * WhatsApp sticker requirements constants
  */
-export async function processVideo(
-  file: File,
-  onProgress?: (progress: number) => void
-): Promise<Blob> {
-  try {
-    // Update progress to indicate we're starting
-    onProgress?.(5)
-
-    // Get FFmpeg instance
-    const ffmpeg = await getFFmpeg()
-    onProgress?.(15)
-
-    // Write input file to FFmpeg's virtual file system
-    const inputFileName = "input." + file.name.split(".").pop()
-    const inputData = await fetchFile(file)
-    await ffmpeg.writeFile(inputFileName, inputData)
-    onProgress?.(30)
-
-    // Process the video according to WhatsApp sticker specifications
-    await ffmpeg.exec([
-      "-i",
-      inputFileName,
-      "-t",
-      "3", // Limit to 3 seconds
-      "-vf",
-      "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2,setsar=1",
-      "-c:v",
-      "libwebp",
-      "-lossless",
-      "0",
-      "-compression_level",
-      "6",
-      "-q:v",
-      "80",
-      "-loop",
-      "0", // Infinite loop
-      "-preset",
-      "picture",
-      "-an", // Remove audio
-      "-vsync",
-      "0",
-      "output.webp"
-    ])
-    onProgress?.(80)
-
-    // Read the processed file
-    const outputData = await ffmpeg.readFile("output.webp")
-    onProgress?.(95)
-
-    // Clean up files from FFmpeg's virtual file system
-    await ffmpeg.deleteFile(inputFileName)
-    await ffmpeg.deleteFile("output.webp")
-
-    onProgress?.(100)
-
-    // Return the WebP file as a Blob
-    return new Blob([outputData], { type: "image/webp" })
-  } catch (error) {
-    console.error("Error processing video:", error)
-    throw new Error(
-      "Failed to process video. Please try a different file or refresh the page."
-    )
-  }
+export const STICKER_REQUIREMENTS = {
+  // Reduced file size for mobile devices
+  MAX_FILE_SIZE_MB: {
+    DESKTOP: 50,
+    MOBILE: 25
+  },
+  MAX_DURATION_SECONDS: 3,
+  DIMENSIONS: {
+    width: 512,
+    height: 512
+  },
+  SUPPORTED_INPUT_FORMATS: ["video/mp4", "video/quicktime", "video/webm"],
+  OUTPUT_FORMAT: "image/webp"
 }
 
 /**
- * Extracts metadata from a video file
- *
- * @param file The video file to analyze
- * @returns Object containing video metadata (duration, width, height)
+ * Detects if the current device is mobile
+ * @returns True if the current browser is on a mobile device
  */
-export async function getVideoMetadata(file: File): Promise<{
-  duration: number
-  width: number
-  height: number
-  hasAudio: boolean
-}> {
-  try {
-    const ffmpeg = await getFFmpeg()
+export function isMobileDevice(): boolean {
+  if (typeof window === "undefined") return false
 
-    // Create variables to store the metadata
-    let duration = 0
-    let width = 0
-    let height = 0
-    let hasAudio = false
-    const logs: string[] = []
-
-    // Set up an event listener to capture log messages
-    const logListener = (logData: { message: string }) => {
-      logs.push(logData.message)
-    }
-
-    // Add the log event listener
-    ffmpeg.on("log", logListener)
-
-    // Write input file to FFmpeg's virtual file system
-    const inputFileName = "input." + file.name.split(".").pop()
-    const inputData = await fetchFile(file)
-    await ffmpeg.writeFile(inputFileName, inputData)
-
-    // Create a temporary file to store the metadata
-    await ffmpeg.exec(["-i", inputFileName, "-f", "null", "-"])
-
-    // Clean up
-    await ffmpeg.deleteFile(inputFileName)
-
-    // Remove the log event listener
-    ffmpeg.off("log", logListener)
-
-    // Parse logs to extract metadata
-    for (const line of logs) {
-      // Match duration
-      const durationMatch = line.match(
-        /Duration: (\d{2}):(\d{2}):(\d{2})\.(\d{2})/
-      )
-      if (durationMatch) {
-        const [, hours, minutes, seconds, centiseconds] = durationMatch
-        duration =
-          parseFloat(hours) * 3600 +
-          parseFloat(minutes) * 60 +
-          parseFloat(seconds) +
-          parseFloat(centiseconds) / 100
-      }
-
-      // Match video dimensions
-      const dimensionsMatch = line.match(/(\d{2,4})x(\d{2,4})/)
-      if (dimensionsMatch && line.includes("Video:")) {
-        width = parseInt(dimensionsMatch[1])
-        height = parseInt(dimensionsMatch[2])
-      }
-
-      // Check for audio stream
-      if (line.includes("Audio:")) {
-        hasAudio = true
-      }
-    }
-
-    return { duration, width, height, hasAudio }
-  } catch (error) {
-    console.error("Error getting video metadata:", error)
-    throw new Error("Failed to analyze video file.")
-  }
-}
-
-/**
- * Checks if FFmpeg is supported in the current browser
- * @returns True if FFmpeg is supported
- */
-export function isFFmpegSupported(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof SharedArrayBuffer !== "undefined" &&
-    typeof WebAssembly !== "undefined"
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent
   )
+}
+
+/**
+ * Detects if the current browser is Safari
+ * @returns True if the current browser is Safari
+ */
+export function isSafariBrowser(): boolean {
+  if (typeof window === "undefined") return false
+
+  return /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+}
+
+/**
+ * Detects if the current browser is running on iOS
+ * @returns True if the current device is iOS
+ */
+export function isIOSDevice(): boolean {
+  if (typeof window === "undefined") return false
+
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream
+  )
+}
+
+/**
+ * Validates if a file is a supported video format for WhatsApp stickers
+ * @param file The file to check
+ * @returns True if the file is a supported video format
+ */
+export function isValidVideoFile(file: File): boolean {
+  return STICKER_REQUIREMENTS.SUPPORTED_INPUT_FORMATS.includes(file.type)
+}
+
+/**
+ * Validates if a file size is within the allowed limit for processing
+ * Takes into account if the user is on a mobile device
+ *
+ * @param file The file to check
+ * @returns True if the file size is within the limit
+ */
+export function isValidFileSize(file: File): boolean {
+  const isMobile = isMobileDevice()
+  const maxSizeMB = isMobile
+    ? STICKER_REQUIREMENTS.MAX_FILE_SIZE_MB.MOBILE
+    : STICKER_REQUIREMENTS.MAX_FILE_SIZE_MB.DESKTOP
+
+  const maxSizeBytes = maxSizeMB * 1024 * 1024
+  return file.size <= maxSizeBytes
+}
+
+/**
+ * Gets the maximum allowed file size based on the device
+ * @returns Maximum file size in MB
+ */
+export function getMaxFileSize(): number {
+  return isMobileDevice()
+    ? STICKER_REQUIREMENTS.MAX_FILE_SIZE_MB.MOBILE
+    : STICKER_REQUIREMENTS.MAX_FILE_SIZE_MB.DESKTOP
+}
+
+/**
+ * Formats a file size in bytes to a human-readable string
+ * @param bytes File size in bytes
+ * @returns Formatted string (e.g., "2.5 MB")
+ */
+export function formatFileSize(bytes: number): string {
+  if (bytes === 0) return "0 Bytes"
+
+  const k = 1024
+  const sizes = ["Bytes", "KB", "MB", "GB"]
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
+}
+
+/**
+ * Creates a URL for a blob or file that can be used in src attributes
+ * @param blob The blob or file to create a URL for
+ * @returns Object URL
+ */
+export function createObjectURL(blob: Blob | File): string {
+  return URL.createObjectURL(blob)
+}
+
+/**
+ * Revokes a URL created with createObjectURL to free memory
+ * @param url The URL to revoke
+ */
+export function revokeObjectURL(url: string): void {
+  URL.revokeObjectURL(url)
+}
+
+/**
+ * Generates a filename for the output sticker
+ * @param originalFilename Original filename (optional)
+ * @returns A filename for the sticker
+ */
+export function generateStickerFilename(originalFilename?: string): string {
+  const timestamp = new Date().toISOString().replace(/[-:.]/g, "")
+  const prefix = "whatsapp-sticker"
+  const suffix = originalFilename ? `-${originalFilename.split(".")[0]}` : ""
+
+  return `${prefix}${suffix}-${timestamp}.webp`
+}
+
+/**
+ * Safely downloads a blob as a file
+ * With special handling for iOS devices
+ *
+ * @param blob The blob to download
+ * @param filename The filename to use
+ */
+export function downloadBlob(blob: Blob, filename: string): void {
+  // Create a URL for the blob
+  const url = createObjectURL(blob)
+
+  // iOS devices handle downloads differently
+  if (isIOSDevice()) {
+    // For iOS, we need to open the image in a new tab
+    // and let the user save it manually
+    window.open(url, "_blank")
+
+    // Cleanup after a delay
+    window.setTimeout(() => revokeObjectURL(url), 1000)
+    return
+  }
+
+  // Standard download for other devices
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+
+  // Append to the document, click, and remove
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+
+  // Revoke the URL to free memory
+  window.setTimeout(() => revokeObjectURL(url), 100)
+}
+
+/**
+ * Checks if the required HTTP headers are set for SharedArrayBuffer support
+ * This is needed for FFmpeg WASM to work in modern browsers
+ *
+ * @returns True if the headers are properly set
+ */
+export function checkSecurityHeaders(): boolean {
+  // Skip check during SSR
+  if (typeof window === "undefined") return false
+
+  try {
+    // Check if the document is cross-origin isolated
+    return window.crossOriginIsolated
+  } catch (error) {
+    // If we can't check, assume it's not set
+    return false
+  }
+}
+
+/**
+ * Creates a dummy SharedArrayBuffer to test browser support
+ *
+ * @returns True if SharedArrayBuffer can be created
+ */
+export function testSharedArrayBuffer(): boolean {
+  try {
+    // Try to create a small SharedArrayBuffer
+    new SharedArrayBuffer(1)
+    return true
+  } catch (error) {
+    return false
+  }
 }
