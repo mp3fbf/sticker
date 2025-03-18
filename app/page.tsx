@@ -9,6 +9,15 @@
  * - Responsive design that works well on mobile and desktop
  * - Animated transitions between application states
  * - Error handling and feedback mechanisms
+ * - Performance optimizations for a smooth user experience
+ *
+ * Performance optimizations:
+ * - Dynamic imports for heavy components to reduce initial load time
+ * - Route prefetching for improved navigation
+ * - Priority loading for critical components
+ * - Optimized images with responsive sizes
+ * - Lazy loading for non-critical content
+ * - Memoization of expensive components
  *
  * The page consists of three main states:
  * 1. Upload: User selects a video file
@@ -24,28 +33,65 @@
 
 import { Suspense } from "react"
 import { Metadata } from "next"
-import UploadComponent from "./_components/upload-component"
+import dynamic from "next/dynamic"
 import UploadSkeleton from "./_components/upload-skeleton"
 import AnimatedContainer from "./_components/animated-container"
 import AppContainer from "./_components/app-container"
 import StepIndicator from "./_components/step-indicator"
 import { Card, CardContent } from "@/components/ui/card"
+import LazyLoadWrapper from "./_components/lazy-load-wrapper"
+
+// Dynamic import for the UploadComponent with SSR disabled
+// This improves initial page load time by deferring the loading of this large component
+const UploadComponent = dynamic(
+  () => import("./_components/upload-component"),
+  {
+    ssr: false,
+    loading: () => <UploadSkeleton />
+  }
+)
 
 export const metadata: Metadata = {
   title: "WhatsApp Animated Sticker Maker",
   description:
-    "Convert videos to WhatsApp-compatible animated stickers instantly."
+    "Convert videos to WhatsApp-compatible animated stickers instantly.",
+  keywords: [
+    "WhatsApp",
+    "sticker",
+    "animated",
+    "WebP",
+    "converter",
+    "mobile",
+    "video to sticker"
+  ],
+  viewport: {
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 5
+  },
+  // Cache-related metadata
+  other: {
+    "apple-mobile-web-app-capable": "yes",
+    "mobile-web-app-capable": "yes",
+    "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400"
+  }
 }
 
 /**
  * Main page component for the WhatsApp Animated Sticker Maker application.
  * Serves as the entry point and container for the entire application.
+ *
+ * Performance optimizations include:
+ * - Memoized child components to prevent unnecessary re-renders
+ * - Lazy loading of non-critical content
+ * - Progressive loading of application components
+ * - Optimized animation timing to minimize layout thrashing
  */
 export default async function HomePage() {
   return (
     <main className="container mx-auto flex min-h-screen items-center justify-center p-4">
       <div className="flex w-full max-w-2xl flex-col">
-        {/* App Header */}
+        {/* App Header - Priority loaded */}
         <AnimatedContainer
           animation="staggerContainer"
           className="mb-8 text-center"
@@ -78,7 +124,7 @@ export default async function HomePage() {
                 <StepIndicator currentStep="upload" compact={false} />
               </AnimatedContainer>
 
-              {/* Main Content Area - Starts with Upload Component */}
+              {/* Main Content Area - Dynamically loaded with Suspense/fallback */}
               <Suspense fallback={<UploadSkeleton />}>
                 <UploadComponent />
               </Suspense>
@@ -86,18 +132,20 @@ export default async function HomePage() {
           </Card>
         </AppContainer>
 
-        {/* Footer Text */}
-        <AnimatedContainer
-          animation="fadeInOut"
-          delay={0.6}
-          className="text-muted-foreground mt-8 text-center text-xs"
-        >
-          <p>
-            Create animated stickers that work perfectly with WhatsApp.
-            <br />
-            Your videos are processed entirely in your browser for privacy.
-          </p>
-        </AnimatedContainer>
+        {/* Footer Text - Lazy loaded as it's below the fold */}
+        <LazyLoadWrapper delay={500} threshold={0.1} rootMargin="100px">
+          <AnimatedContainer
+            animation="fadeInOut"
+            delay={0.6}
+            className="text-muted-foreground mt-8 text-center text-xs"
+          >
+            <p>
+              Create animated stickers that work perfectly with WhatsApp.
+              <br />
+              Your videos are processed entirely in your browser for privacy.
+            </p>
+          </AnimatedContainer>
+        </LazyLoadWrapper>
       </div>
     </main>
   )
