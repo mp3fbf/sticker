@@ -57,11 +57,6 @@ export const metadata: Metadata = {
     "mobile",
     "video to sticker"
   ],
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 5
-  },
   // Cache-related metadata
   other: {
     "apple-mobile-web-app-capable": "yes",
@@ -81,7 +76,7 @@ export const metadata: Metadata = {
  * - Optimized animation timing to minimize layout thrashing
  * - Browser feature detection and appropriate fallbacks
  */
-export default async function HomePage() {
+export default function HomePage() {
   return (
     <main className="container mx-auto flex min-h-screen items-center justify-center p-4">
       <div className="flex w-full max-w-2xl flex-col">
