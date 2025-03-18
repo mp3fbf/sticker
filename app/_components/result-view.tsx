@@ -103,13 +103,13 @@ export default function ResultView({
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5, duration: 0.3 }}
-              className="flex w-full flex-col-reverse gap-3 sm:flex-row sm:justify-between"
+              className="flex w-full flex-col space-y-3"
             >
               <Button
                 variant="outline"
                 size="sm"
                 onClick={onReset}
-                className="items-center justify-center sm:flex"
+                className="w-full px-4 py-2"
               >
                 <ArrowLeft className="mr-2 size-4" />
                 Create Another
@@ -119,7 +119,7 @@ export default function ResultView({
                 blob={blob}
                 originalFilename={originalFilename}
                 size="sm"
-                className="w-full sm:w-auto"
+                className="w-full px-4 py-2"
               />
             </motion.div>
           </div>
