@@ -33,23 +33,15 @@
 
 import { Suspense } from "react"
 import { Metadata } from "next"
-import dynamic from "next/dynamic"
 import UploadSkeleton from "./_components/upload-skeleton"
 import AnimatedContainer from "./_components/animated-container"
 import AppContainer from "./_components/app-container"
 import StepIndicator from "./_components/step-indicator"
 import { Card, CardContent } from "@/components/ui/card"
 import LazyLoadWrapper from "./_components/lazy-load-wrapper"
+import DynamicUploadWrapper from "./_components/dynamic-upload-wrapper"
 
-// Dynamic import for the UploadComponent with SSR disabled
-// This improves initial page load time by deferring the loading of this large component
-const UploadComponent = dynamic(
-  () => import("./_components/upload-component"),
-  {
-    ssr: false,
-    loading: () => <UploadSkeleton />
-  }
-)
+// Dynamic import moved to client component DynamicUploadWrapper
 
 export const metadata: Metadata = {
   title: "WhatsApp Animated Sticker Maker",
@@ -126,7 +118,7 @@ export default async function HomePage() {
 
               {/* Main Content Area - Dynamically loaded with Suspense/fallback */}
               <Suspense fallback={<UploadSkeleton />}>
-                <UploadComponent />
+                <DynamicUploadWrapper />
               </Suspense>
             </CardContent>
           </Card>
