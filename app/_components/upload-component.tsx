@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useRef, useState, useEffect } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -9,11 +9,27 @@ import { Upload, X, FileVideo, Download } from "lucide-react"
 import { useFileUpload } from "@/lib/hooks/use-file-upload"
 import { formatFileSize, STICKER_REQUIREMENTS } from "@/lib/utils"
 import DropZone from "./drop-zone"
-import ErrorMessage from "./error-message"
-import { validateVideoFile } from "@/lib/validators"
 import ProcessingIndicator from "./processing-indicator"
 import { useVideoProcessor } from "@/lib/hooks/use-video-processor"
 import AnimatedContainer from "./animated-container"
+import ErrorDisplay from "./error-display"
+import SuccessView from "./success-view"
+import StepIndicator, { AppStep } from "./step-indicator"
+
+// Import the error handling utilities
+import {
+  AppError,
+  ErrorType,
+  ErrorSeverity,
+  createFileTypeError,
+  createFileSizeError,
+  createFileDurationError,
+  createProcessingError,
+  checkWasmSupport,
+  checkSharedArrayBufferSupport,
+  handleUnknownError,
+  logError
+} from "@/lib/error-handler"
 
 /**
  * @description
@@ -27,22 +43,26 @@ import AnimatedContainer from "./animated-container"
  * - Processing with progress indication
  * - Sticker preview
  * - Download functionality
- * - Error handling and retry capabilities
+ * - Enhanced error handling and troubleshooting
  * - Smooth animations between states
  *
  * The component manages a multi-stage workflow:
- * 1. File selection & validation
- * 2. Processing with progress indicator
- * 3. Preview and download
+ * 1. File selection & validation (upload)
+ * 2. Processing with progress indicator (process)
+ * 3. Preview and download (download)
  *
  * @component
  */
 export default function UploadComponent() {
   const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [validationErrors, setValidationErrors] = useState<string[]>([])
-  const [isValidating, setIsValidating] = useState(false)
   const [currentFile, setCurrentFile] = useState<File | null>(null)
+
+  // Track the current step in the application flow
+  const [currentStep, setCurrentStep] = useState<AppStep>("upload")
+
+  // State for the error handling system
+  const [appError, setAppError] = useState<AppError | null>(null)
 
   // Initialize video processor
   const {
@@ -55,12 +75,22 @@ export default function UploadComponent() {
     reset: resetProcessor
   } = useVideoProcessor({
     onSuccess: ({ blob, filename }) => {
+      // Move to download step on success
+      setCurrentStep("download")
+
       toast({
         title: "Processing complete",
         description: `Your sticker is ready to download.`
       })
+      // Clear any existing errors on success
+      setAppError(null)
     },
     onError: error => {
+      // Create and log a processing error
+      const appErr = createProcessingError(error)
+      setAppError(appErr)
+      logError(appErr)
+
       toast({
         title: "Processing failed",
         description: error,
@@ -69,33 +99,85 @@ export default function UploadComponent() {
     }
   })
 
+  // Check for browser compatibility issues on component mount
+  useEffect(() => {
+    // Check WebAssembly support
+    const wasmError = checkWasmSupport()
+    if (wasmError) {
+      setAppError(wasmError)
+      logError(wasmError)
+      return
+    }
+
+    // Check SharedArrayBuffer support
+    const sabError = checkSharedArrayBufferSupport()
+    if (sabError) {
+      setAppError(sabError)
+      logError(sabError)
+      // This is just a warning, so we don't return early
+    }
+  }, [])
+
   /**
    * Validates a file for processing
    * @param file - The file to validate
    * @returns Promise resolving to whether the file is valid
    */
   const validateFile = async (file: File) => {
-    setIsValidating(true)
-    setValidationErrors([])
+    // Clear previous errors
+    setAppError(null)
 
     try {
-      // Validate the file with comprehensive checks
-      const validation = await validateVideoFile(file, { checkDuration: true })
-
-      if (!validation.isValid) {
-        setValidationErrors(validation.errors)
+      // Check file type
+      if (!STICKER_REQUIREMENTS.SUPPORTED_INPUT_FORMATS.includes(file.type)) {
+        const error = createFileTypeError(file.type || "unknown")
+        setAppError(error)
+        logError(error)
         return false
+      }
+
+      // Check file size
+      const maxSizeMB = STICKER_REQUIREMENTS.MAX_FILE_SIZE_MB.DESKTOP
+      const maxSizeBytes = maxSizeMB * 1024 * 1024
+      if (file.size > maxSizeBytes) {
+        const error = createFileSizeError(file.size)
+        setAppError(error)
+        logError(error)
+        return false
+      }
+
+      // Check video duration (create a video element to get duration)
+      const durationPromise = new Promise<number>(resolve => {
+        const video = document.createElement("video")
+        video.preload = "metadata"
+        video.onloadedmetadata = () => {
+          URL.revokeObjectURL(video.src)
+          resolve(video.duration)
+        }
+        video.onerror = () => {
+          URL.revokeObjectURL(video.src)
+          resolve(0) // Can't determine duration
+        }
+        video.src = URL.createObjectURL(file)
+      })
+
+      const duration = await durationPromise
+      if (duration > STICKER_REQUIREMENTS.MAX_DURATION_SECONDS) {
+        // This is just a warning, not a blocking error
+        const warning = createFileDurationError(duration)
+        setAppError(warning)
+        logError(warning)
+        // We still return true because we'll auto-trim the video
+        return true
       }
 
       return true
     } catch (error) {
-      console.error("Validation error:", error)
-      setValidationErrors([
-        "An unexpected error occurred while validating the file."
-      ])
+      // Handle unexpected validation errors
+      const appErr = handleUnknownError(error)
+      setAppError(appErr)
+      logError(appErr)
       return false
-    } finally {
-      setIsValidating(false)
     }
   }
 
@@ -106,9 +188,13 @@ export default function UploadComponent() {
   const startProcessing = async (file: File) => {
     try {
       setCurrentFile(file)
+      // Update the current step to processing
+      setCurrentStep("process")
       await processVideoFile(file)
     } catch (error) {
-      console.error("Processing error:", error)
+      const appErr = handleUnknownError(error)
+      setAppError(appErr)
+      logError(appErr)
     }
   }
 
@@ -130,7 +216,7 @@ export default function UploadComponent() {
       startProcessing(file)
       return true
     } else {
-      // If validation fails, no need to show toast as errors are displayed in UI
+      // Error is already set in validateFile
       return false
     }
   }
@@ -140,16 +226,32 @@ export default function UploadComponent() {
    * @param errorMessage - The error message to display
    */
   const handleError = (errorMessage: string) => {
-    setValidationErrors([errorMessage])
+    const appErr = {
+      type: ErrorType.UNKNOWN_ERROR,
+      message: errorMessage,
+      severity: ErrorSeverity.ERROR
+    }
+    setAppError(appErr)
+    logError(appErr)
   }
 
   /**
    * Retries processing the current file
    */
   const handleRetry = () => {
+    // Clear the error state
+    setAppError(null)
+
     if (currentFile) {
       retryLastFile(currentFile)
     }
+  }
+
+  /**
+   * Dismisses the current error
+   */
+  const handleDismissError = () => {
+    setAppError(null)
   }
 
   /**
@@ -190,13 +292,14 @@ export default function UploadComponent() {
   })
 
   /**
-   * Clears the current file and resets the processor
+   * Resets the entire application state to start over
    */
-  const handleClearFile = () => {
+  const handleReset = () => {
     clearFile()
     resetProcessor()
-    setValidationErrors([])
+    setAppError(null)
     setCurrentFile(null)
+    setCurrentStep("upload")
   }
 
   /**
@@ -221,20 +324,31 @@ export default function UploadComponent() {
 
   return (
     <AnimatedContainer animation="fadeInOut" className="w-full">
+      {/* Application StepIndicator - updated based on current step */}
+      <AnimatePresence mode="wait">
+        <div className="mb-4 px-4 sm:px-0">
+          <StepIndicator currentStep={currentStep} compact={false} />
+        </div>
+      </AnimatePresence>
+
       <Card>
         <CardContent className="p-6">
-          {/* Show validation errors if any */}
+          {/* Error display component */}
           <AnimatePresence mode="wait">
-            {validationErrors.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.3 }}
-                className="mb-4"
-              >
-                <ErrorMessage message={validationErrors} />
-              </motion.div>
+            {appError && (
+              <div className="mb-4">
+                <ErrorDisplay
+                  error={appError}
+                  onDismiss={handleDismissError}
+                  onRetry={
+                    appError.type !== ErrorType.BROWSER_UNSUPPORTED &&
+                    appError.type !== ErrorType.WASM_UNSUPPORTED
+                      ? handleRetry
+                      : undefined
+                  }
+                  showTroubleshootingTips={true}
+                />
+              </div>
             )}
           </AnimatePresence>
 
@@ -275,14 +389,20 @@ export default function UploadComponent() {
                     {STICKER_REQUIREMENTS.SUPPORTED_INPUT_FORMATS.map(type =>
                       type.replace("video/", "").toUpperCase()
                     ).join(", ")}{" "}
-                    (max {STICKER_REQUIREMENTS.MAX_FILE_SIZE_MB}MB)
+                    (max {STICKER_REQUIREMENTS.MAX_FILE_SIZE_MB.DESKTOP}MB)
                   </p>
                   <motion.div
                     className="mt-4"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
-                    <Button size="sm" disabled={isValidating}>
+                    <Button
+                      size="sm"
+                      disabled={
+                        isUploading ||
+                        appError?.type === ErrorType.WASM_UNSUPPORTED
+                      }
+                    >
                       Select Video
                     </Button>
                   </motion.div>
@@ -294,7 +414,10 @@ export default function UploadComponent() {
                     )}
                     className="hidden"
                     onChange={handleFileChange}
-                    disabled={isValidating}
+                    disabled={
+                      isUploading ||
+                      appError?.type === ErrorType.WASM_UNSUPPORTED
+                    }
                   />
                 </DropZone>
               </motion.div>
@@ -336,7 +459,7 @@ export default function UploadComponent() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={handleClearFile}
+                      onClick={handleReset}
                       aria-label="Remove file"
                       disabled={isUploading || isProcessing}
                     >
@@ -381,68 +504,15 @@ export default function UploadComponent() {
                   )}
                 </AnimatePresence>
 
-                {/* Sticker preview */}
+                {/* Success view with sticker preview */}
                 <AnimatePresence>
                   {showPreview && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                      className="flex flex-col items-center justify-center"
-                    >
-                      <motion.div
-                        className="relative my-2 flex size-64 items-center justify-center overflow-hidden rounded-md border"
-                        whileHover={{ scale: 1.02 }}
-                        transition={{
-                          type: "spring",
-                          stiffness: 400,
-                          damping: 25
-                        }}
-                      >
-                        <img
-                          src={result.url || ""}
-                          alt="Sticker preview"
-                          className="max-h-full max-w-full object-contain"
-                        />
-                      </motion.div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Action buttons for completed stickers */}
-                <AnimatePresence>
-                  {showPreview && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 20 }}
-                      transition={{ delay: 0.2 }}
-                      className="flex justify-between"
-                    >
-                      <motion.div
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                      >
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleClearFile}
-                        >
-                          New Upload
-                        </Button>
-                      </motion.div>
-                      <motion.div
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        initial={{ x: 10 }}
-                        animate={{ x: 0 }}
-                      >
-                        <Button size="sm" onClick={handleDownload}>
-                          <Download className="mr-2 size-4" />
-                          Download Sticker
-                        </Button>
-                      </motion.div>
-                    </motion.div>
+                    <SuccessView
+                      blob={result.blob}
+                      previewUrl={result.url}
+                      originalFilename={file?.name}
+                      onReset={handleReset}
+                    />
                   )}
                 </AnimatePresence>
               </motion.div>

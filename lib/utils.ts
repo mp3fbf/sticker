@@ -6,6 +6,7 @@
  * - File validation and handling
  * - File size formatting
  * - URL object handling
+ * - Browser and device detection
  *
  * @dependencies
  * - clsx: For conditional class name handling
@@ -28,7 +29,10 @@ export function cn(...inputs: ClassValue[]) {
  * WhatsApp sticker requirements constants
  */
 export const STICKER_REQUIREMENTS = {
-  MAX_FILE_SIZE_MB: 50,
+  MAX_FILE_SIZE_MB: {
+    DESKTOP: 50,
+    MOBILE: 30
+  },
   MAX_DURATION_SECONDS: 3,
   DIMENSIONS: {
     width: 512,
@@ -36,6 +40,36 @@ export const STICKER_REQUIREMENTS = {
   },
   SUPPORTED_INPUT_FORMATS: ["video/mp4", "video/quicktime", "video/webm"],
   OUTPUT_FORMAT: "image/webp"
+}
+
+/**
+ * Checks if the current device is a mobile device
+ * @returns True if the current device is a mobile device
+ */
+export function isMobileDevice(): boolean {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    typeof navigator !== "undefined" ? navigator.userAgent : ""
+  )
+}
+
+/**
+ * Checks if the current browser is Safari
+ * @returns True if the current browser is Safari
+ */
+export function isSafariBrowser(): boolean {
+  return /^((?!chrome|android).)*safari/i.test(
+    typeof navigator !== "undefined" ? navigator.userAgent : ""
+  )
+}
+
+/**
+ * Checks if the current device is an iOS device
+ * @returns True if the current device is an iOS device
+ */
+export function isIOSDevice(): boolean {
+  return /iPad|iPhone|iPod/i.test(
+    typeof navigator !== "undefined" ? navigator.userAgent : ""
+  )
 }
 
 /**
@@ -50,12 +84,14 @@ export function isValidVideoFile(file: File): boolean {
 /**
  * Validates if a file size is within the allowed limit for processing
  * @param file The file to check
- * @param maxSizeMB The maximum allowed size in megabytes (defaults to 50MB)
+ * @param maxSizeMB The maximum allowed size in megabytes (defaults to desktop size)
  * @returns True if the file size is within the limit
  */
 export function isValidFileSize(
   file: File,
-  maxSizeMB: number = STICKER_REQUIREMENTS.MAX_FILE_SIZE_MB
+  maxSizeMB: number = isMobileDevice()
+    ? STICKER_REQUIREMENTS.MAX_FILE_SIZE_MB.MOBILE
+    : STICKER_REQUIREMENTS.MAX_FILE_SIZE_MB.DESKTOP
 ): boolean {
   const maxSizeBytes = maxSizeMB * 1024 * 1024
   return file.size <= maxSizeBytes
