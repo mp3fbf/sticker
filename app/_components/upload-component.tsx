@@ -14,7 +14,7 @@ import { useVideoProcessor } from "@/lib/hooks/use-video-processor"
 import AnimatedContainer from "./animated-container"
 import ErrorDisplay from "./error-display"
 import SuccessView from "./success-view"
-import StepIndicator, { AppStep } from "./step-indicator"
+import { AppStep } from "./step-indicator"
 
 // Import the error handling utilities
 import {
@@ -30,6 +30,10 @@ import {
   handleUnknownError,
   logError
 } from "@/lib/error-handler"
+
+interface UploadComponentProps {
+  onStepChange?: (step: AppStep) => void
+}
 
 /**
  * @description
@@ -53,13 +57,22 @@ import {
  *
  * @component
  */
-export default function UploadComponent() {
+export default function UploadComponent({
+  onStepChange
+}: UploadComponentProps) {
   const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [currentFile, setCurrentFile] = useState<File | null>(null)
 
   // Track the current step in the application flow
   const [currentStep, setCurrentStep] = useState<AppStep>("upload")
+
+  // Update parent component when step changes
+  useEffect(() => {
+    if (onStepChange) {
+      onStepChange(currentStep)
+    }
+  }, [currentStep, onStepChange])
 
   // State for the error handling system
   const [appError, setAppError] = useState<AppError | null>(null)
@@ -324,15 +337,8 @@ export default function UploadComponent() {
 
   return (
     <AnimatedContainer animation="fadeInOut" className="w-full">
-      {/* Application StepIndicator - updated based on current step */}
-      <AnimatePresence mode="wait">
-        <div className="mb-4 px-4 sm:px-0">
-          <StepIndicator currentStep={currentStep} compact={false} />
-        </div>
-      </AnimatePresence>
-
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-6 pb-8">
           {/* Error display component */}
           <AnimatePresence mode="wait">
             {appError && (
@@ -428,7 +434,7 @@ export default function UploadComponent() {
                 initial="hidden"
                 animate="visible"
                 exit="exit"
-                className="space-y-4"
+                className="space-y-4 pb-2"
               >
                 {/* File info */}
                 <motion.div

@@ -133,7 +133,7 @@ export default function SuccessView({
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.6, duration: 0.3 }}
-              className="flex w-full flex-col-reverse gap-3 sm:flex-row sm:justify-between"
+              className="flex w-full flex-col-reverse gap-3 pb-6 sm:flex-row sm:justify-between"
             >
               <Button
                 variant="outline"

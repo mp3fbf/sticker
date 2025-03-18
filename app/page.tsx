@@ -70,7 +70,7 @@ export default async function HomePage() {
         <AppContainer>
           <Card className="border-0 shadow-none">
             <CardContent className="p-0 sm:p-6">
-              {/* Step Indicator */}
+              {/* Step Indicator - The UploadComponent will manage the currentStep state */}
               <AnimatedContainer
                 animation="fadeInOut"
                 className="px-4 pb-2 pt-4 sm:p-0 sm:pb-4"
