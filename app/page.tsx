@@ -10,6 +10,7 @@
  * - Animated transitions between application states
  * - Error handling and feedback mechanisms
  * - Performance optimizations for a smooth user experience
+ * - Browser compatibility detection and fallbacks
  *
  * Performance optimizations:
  * - Dynamic imports for heavy components to reduce initial load time
@@ -28,6 +29,7 @@
  * - React and Next.js for component architecture
  * - AppContainer for consistent layout
  * - StepIndicator for visual process tracking
+ * - BrowserWarning for compatibility checks
  * - Various components for specific functionality stages
  */
 
@@ -40,8 +42,7 @@ import StepIndicator from "./_components/step-indicator"
 import { Card, CardContent } from "@/components/ui/card"
 import LazyLoadWrapper from "./_components/lazy-load-wrapper"
 import DynamicUploadWrapper from "./_components/dynamic-upload-wrapper"
-
-// Dynamic import moved to client component DynamicUploadWrapper
+import DynamicBrowserWarningWrapper from "./_components/dynamic-browser-warning-wrapper"
 
 export const metadata: Metadata = {
   title: "WhatsApp Animated Sticker Maker",
@@ -78,11 +79,20 @@ export const metadata: Metadata = {
  * - Lazy loading of non-critical content
  * - Progressive loading of application components
  * - Optimized animation timing to minimize layout thrashing
+ * - Browser feature detection and appropriate fallbacks
  */
 export default async function HomePage() {
   return (
     <main className="container mx-auto flex min-h-screen items-center justify-center p-4">
       <div className="flex w-full max-w-2xl flex-col">
+        {/* Browser Compatibility Warning - Client-side only */}
+        <div className="mb-4">
+          <DynamicBrowserWarningWrapper
+            dismissible={true}
+            checkOnMount={true}
+          />
+        </div>
+
         {/* App Header - Priority loaded */}
         <AnimatedContainer
           animation="staggerContainer"

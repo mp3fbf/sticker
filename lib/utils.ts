@@ -63,6 +63,35 @@ export function isSafariBrowser(): boolean {
 }
 
 /**
+ * Checks if the current browser is Firefox
+ * @returns True if the current browser is Firefox
+ */
+export function isFirefoxBrowser(): boolean {
+  return /firefox|fxios/i.test(
+    typeof navigator !== "undefined" ? navigator.userAgent : ""
+  )
+}
+
+/**
+ * Checks if the current browser is Chrome
+ * @returns True if the current browser is Chrome
+ */
+export function isChromeBrowser(): boolean {
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : ""
+  return /chrome|chromium|crios/i.test(ua) && !/edg/i.test(ua)
+}
+
+/**
+ * Checks if the current browser is Edge
+ * @returns True if the current browser is Edge
+ */
+export function isEdgeBrowser(): boolean {
+  return /edg/i.test(
+    typeof navigator !== "undefined" ? navigator.userAgent : ""
+  )
+}
+
+/**
  * Checks if the current device is an iOS device
  * @returns True if the current device is an iOS device
  */
