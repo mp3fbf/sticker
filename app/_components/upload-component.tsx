@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef, useState } from "react"
+import { AnimatePresence, motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { useToast } from "@/components/ui/use-toast"
@@ -12,6 +13,7 @@ import ErrorMessage from "./error-message"
 import { validateVideoFile } from "@/lib/validators"
 import ProcessingIndicator from "./processing-indicator"
 import { useVideoProcessor } from "@/lib/hooks/use-video-processor"
+import AnimatedContainer from "./animated-container"
 
 /**
  * @description
@@ -26,6 +28,7 @@ import { useVideoProcessor } from "@/lib/hooks/use-video-processor"
  * - Sticker preview
  * - Download functionality
  * - Error handling and retry capabilities
+ * - Smooth animations between states
  *
  * The component manages a multi-stage workflow:
  * 1. File selection & validation
@@ -209,122 +212,244 @@ export default function UploadComponent() {
   const showPreview = file && result.url && !isProcessing && !processingError
   const showUpload = !file
 
+  // Animation variants for different component states
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: { opacity: 1, transition: { duration: 0.3 } },
+    exit: { opacity: 0, transition: { duration: 0.2 } }
+  }
+
   return (
-    <Card>
-      <CardContent className="p-6">
-        {/* Show validation errors if any */}
-        {validationErrors.length > 0 && (
-          <ErrorMessage message={validationErrors} className="mb-4" />
-        )}
-
-        {/* Initial upload state */}
-        {showUpload ? (
-          <DropZone
-            isDragging={isDragging}
-            icon={<Upload className="text-muted-foreground mx-auto size-12" />}
-            title="Upload your video"
-            description="Drag and drop or click to select a video file"
-            onClick={handleUploadClick}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
-            <p className="text-muted-foreground mt-1 text-xs">
-              Supports{" "}
-              {STICKER_REQUIREMENTS.SUPPORTED_INPUT_FORMATS.map(type =>
-                type.replace("video/", "").toUpperCase()
-              ).join(", ")}{" "}
-              (max {STICKER_REQUIREMENTS.MAX_FILE_SIZE_MB}MB)
-            </p>
-            <div className="mt-4">
-              <Button size="sm" disabled={isValidating}>
-                Select Video
-              </Button>
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={STICKER_REQUIREMENTS.SUPPORTED_INPUT_FORMATS.join(",")}
-              className="hidden"
-              onChange={handleFileChange}
-              disabled={isValidating}
-            />
-          </DropZone>
-        ) : (
-          <div className="space-y-4">
-            {/* File info */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="bg-muted rounded-md p-2">
-                  <FileVideo className="text-primary size-8" />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm font-medium">{file?.name}</p>
-                  <p className="text-muted-foreground text-xs">
-                    {formatFileSize(file?.size || 0)}
-                  </p>
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleClearFile}
-                aria-label="Remove file"
-                disabled={isUploading || isProcessing}
+    <AnimatedContainer animation="fadeInOut" className="w-full">
+      <Card>
+        <CardContent className="p-6">
+          {/* Show validation errors if any */}
+          <AnimatePresence mode="wait">
+            {validationErrors.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.3 }}
+                className="mb-4"
               >
-                <X className="size-4" />
-              </Button>
-            </div>
-
-            {/* Upload progress indicator */}
-            {isUploading && (
-              <div className="space-y-2">
-                <ProcessingIndicator
-                  progress={uploadProgress}
-                  isProcessing={true}
-                  error={null}
-                />
-              </div>
+                <ErrorMessage message={validationErrors} />
+              </motion.div>
             )}
+          </AnimatePresence>
 
-            {/* Processing indicator */}
-            {showProcessing && (
-              <ProcessingIndicator
-                progress={progress}
-                isProcessing={isProcessing}
-                error={processingError}
-                onRetry={handleRetry}
-              />
-            )}
-
-            {/* Sticker preview */}
-            {showPreview && (
-              <div className="flex flex-col items-center justify-center">
-                <div className="relative my-2 flex size-64 items-center justify-center overflow-hidden rounded-md border">
-                  <img
-                    src={result.url || ""}
-                    alt="Sticker preview"
-                    className="max-h-full max-w-full object-contain"
+          {/* Initial upload state */}
+          <AnimatePresence mode="wait">
+            {showUpload ? (
+              <motion.div
+                key="upload"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+              >
+                <DropZone
+                  isDragging={isDragging}
+                  icon={
+                    <motion.div
+                      initial={{ scale: 0.9 }}
+                      animate={{ scale: 1 }}
+                      transition={{
+                        repeat: Infinity,
+                        repeatType: "reverse",
+                        duration: 1.5
+                      }}
+                    >
+                      <Upload className="text-muted-foreground mx-auto size-12" />
+                    </motion.div>
+                  }
+                  title="Upload your video"
+                  description="Drag and drop or click to select a video file"
+                  onClick={handleUploadClick}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                >
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    Supports{" "}
+                    {STICKER_REQUIREMENTS.SUPPORTED_INPUT_FORMATS.map(type =>
+                      type.replace("video/", "").toUpperCase()
+                    ).join(", ")}{" "}
+                    (max {STICKER_REQUIREMENTS.MAX_FILE_SIZE_MB}MB)
+                  </p>
+                  <motion.div
+                    className="mt-4"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <Button size="sm" disabled={isValidating}>
+                      Select Video
+                    </Button>
+                  </motion.div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={STICKER_REQUIREMENTS.SUPPORTED_INPUT_FORMATS.join(
+                      ","
+                    )}
+                    className="hidden"
+                    onChange={handleFileChange}
+                    disabled={isValidating}
                   />
-                </div>
-              </div>
-            )}
+                </DropZone>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="file-processing"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="space-y-4"
+              >
+                {/* File info */}
+                <motion.div
+                  className="flex items-center justify-between"
+                  initial={{ y: 10, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.1 }}
+                >
+                  <div className="flex items-center space-x-3">
+                    <motion.div
+                      className="bg-muted rounded-md p-2"
+                      whileHover={{ scale: 1.05 }}
+                    >
+                      <FileVideo className="text-primary size-8" />
+                    </motion.div>
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">{file?.name}</p>
+                      <p className="text-muted-foreground text-xs">
+                        {formatFileSize(file?.size || 0)}
+                      </p>
+                    </div>
+                  </div>
+                  <motion.div
+                    whileHover={{ scale: 1.1, rotate: 90 }}
+                    whileTap={{ scale: 0.9 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleClearFile}
+                      aria-label="Remove file"
+                      disabled={isUploading || isProcessing}
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  </motion.div>
+                </motion.div>
 
-            {/* Action buttons for completed stickers */}
-            {showPreview && (
-              <div className="flex justify-between">
-                <Button variant="outline" size="sm" onClick={handleClearFile}>
-                  New Upload
-                </Button>
-                <Button size="sm" onClick={handleDownload}>
-                  <Download className="mr-2 size-4" />
-                  Download Sticker
-                </Button>
-              </div>
+                {/* Upload progress indicator */}
+                <AnimatePresence>
+                  {isUploading && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-2"
+                    >
+                      <ProcessingIndicator
+                        progress={uploadProgress}
+                        isProcessing={true}
+                        error={null}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Processing indicator */}
+                <AnimatePresence>
+                  {showProcessing && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                    >
+                      <ProcessingIndicator
+                        progress={progress}
+                        isProcessing={isProcessing}
+                        error={processingError}
+                        onRetry={handleRetry}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Sticker preview */}
+                <AnimatePresence>
+                  {showPreview && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      className="flex flex-col items-center justify-center"
+                    >
+                      <motion.div
+                        className="relative my-2 flex size-64 items-center justify-center overflow-hidden rounded-md border"
+                        whileHover={{ scale: 1.02 }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 400,
+                          damping: 25
+                        }}
+                      >
+                        <img
+                          src={result.url || ""}
+                          alt="Sticker preview"
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      </motion.div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Action buttons for completed stickers */}
+                <AnimatePresence>
+                  {showPreview && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 20 }}
+                      transition={{ delay: 0.2 }}
+                      className="flex justify-between"
+                    >
+                      <motion.div
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                      >
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleClearFile}
+                        >
+                          New Upload
+                        </Button>
+                      </motion.div>
+                      <motion.div
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        initial={{ x: 10 }}
+                        animate={{ x: 0 }}
+                      >
+                        <Button size="sm" onClick={handleDownload}>
+                          <Download className="mr-2 size-4" />
+                          Download Sticker
+                        </Button>
+                      </motion.div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
             )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          </AnimatePresence>
+        </CardContent>
+      </Card>
+    </AnimatedContainer>
   )
 }
